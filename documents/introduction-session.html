@@ -655,6 +655,47 @@ smb: \&gt; cd bob
 smb: \bob\&gt; ls
   <span class="h">passwords.txt</span>          N      156  Thu Feb 25 16:42:23 2021
 smb: \bob\&gt; get passwords.txt</code></pre>
+<h3>SNMP: device management</h3>
+<p><b>SNMP</b> (UDP port <b>161</b>) is used to monitor and manage network devices like routers, switches, printers and servers. Clients authenticate with a <b>community string</b>, which works like a shared password.</p>
+<figure>
+<svg viewBox="0 0 760 150" xmlns="http://www.w3.org/2000/svg" font-family="Inter,Segoe UI,Arial,sans-serif">
+  <defs><marker id="sn" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker></defs>
+  <g text-anchor="middle">
+    <rect x="20" y="40" width="170" height="74" rx="10" fill="#f8fafc" stroke="#0f172a" stroke-width="2"/><text x="105" y="72" font-size="14" font-weight="700">Attacker</text><text x="105" y="93" font-size="12" fill="#475569" font-family="monospace">snmpwalk</text>
+    <rect x="570" y="40" width="170" height="74" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2"/><text x="655" y="68" font-size="14" font-weight="700">Device</text><text x="655" y="88" font-size="12" fill="#475569">router / server</text><text x="655" y="105" font-size="11" fill="#d97706" font-family="monospace">UDP 161</text>
+  </g>
+  <g stroke="#334155" stroke-width="2" marker-end="url(#sn)"><line x1="192" y1="62" x2="564" y2="62"/><line x1="568" y1="94" x2="196" y2="94"/></g>
+  <g font-size="12" text-anchor="middle">
+    <text x="380" y="54" font-family="monospace" fill="#0f172a">community = "public"  (plaintext!)</text>
+    <text x="380" y="114" fill="#0f172a">hostname · OS version · processes · interfaces · routes</text>
+  </g>
+  <text x="380" y="142" text-anchor="middle" font-size="12" fill="#475569">v1/v2c: plaintext community string · v3: adds authentication and encryption</text>
+</svg>
+<figcaption>Guess the community string and the device will tell you a lot about itself.</figcaption>
+</figure>
+<p>Why it's interesting for us:</p>
+<ul>
+  <li>Many devices still use the <b>default</b> community strings <code>public</code> (read) and <code>private</code> (read/write).</li>
+  <li>In <b>v1 and v2c</b> the community string travels in <b>plaintext</b>. Know it and you're in. Only <b>v3</b> added authentication and encryption.</li>
+  <li>SNMP can leak a lot: software versions, network interfaces, routes and <b>running processes</b>. Process arguments sometimes contain <b>passwords</b>, and people reuse passwords on other services.</li>
+</ul>
+<p>Query a single value (here, the hostname) with the <code>public</code> string:</p>
+<pre><code><span class="p">Ba7rzz@htb[/htb]$</span> snmpwalk -v 2c -c public 10.129.42.253 1.3.6.1.2.1.1.5.0
+iso.3.6.1.2.1.1.5.0 = STRING: <span class="h">"gs-svcscan"</span>      <span class="c"># public works → we can read data</span>
+
+<span class="p">Ba7rzz@htb[/htb]$</span> snmpwalk -v 2c -c private 10.129.42.253
+Timeout: No Response from 10.129.42.253     <span class="c"># wrong string → no answer</span></code></pre>
+<table>
+  <tr><th>Part</th><th>Meaning</th></tr>
+  <tr><td><code>-v 2c</code></td><td>SNMP version to use</td></tr>
+  <tr><td><code>-c public</code></td><td>Community string to try</td></tr>
+  <tr><td><code>1.3.6.1.2.1.1.5.0</code></td><td>OID: the "address" of one value (this one is the hostname). Leave it out to dump everything.</td></tr>
+</table>
+<p>Don't know the string? Brute-force it with <a href="https://github.com/trailofbits/onesixtyone">onesixtyone</a> and a wordlist of common community strings (e.g. the <code>dict.txt</code> in its repo):</p>
+<pre><code><span class="p">Ba7rzz@htb[/htb]$</span> onesixtyone -c dict.txt 10.129.42.254
+Scanning 1 hosts, 51 communities
+10.129.42.254 <span class="h">[public]</span> Linux gs-svcscan 5.4.0-66-generic #74-Ubuntu SMP ... x86_64</code></pre>
+<div class="tip"><span class="lbl">Remember</span>SNMP is <b>UDP</b>. A default <code>nmap</code> scan only checks TCP, so you'll miss it. Use <code>sudo nmap -sU -p161 &lt;ip&gt;</code>.</div>
 <div class="note"><span class="lbl">The lesson</span>Hacking is rarely one magic exploit. It's usually <b>chaining small findings</b>: an open port → a misconfiguration → a file → credentials → more access.</div>
 
 <!-- ============================================================ -->
@@ -678,6 +719,8 @@ smb: \bob\&gt; get passwords.txt</code></pre>
   <tr><td><code>ftp -p &lt;ip&gt;</code></td><td>Connect to FTP (try <code>anonymous</code>)</td></tr>
   <tr><td><code>smbclient -N -L \\\\&lt;ip&gt;</code></td><td>List SMB shares</td></tr>
   <tr><td><code>smbclient -U user \\\\&lt;ip&gt;\\share</code></td><td>Open an SMB share</td></tr>
+  <tr><td><code>snmpwalk -v 2c -c public &lt;ip&gt;</code></td><td>Dump SNMP info with a community string</td></tr>
+  <tr><td><code>onesixtyone -c dict.txt &lt;ip&gt;</code></td><td>Brute-force SNMP community strings</td></tr>
   <tr><td><code>tmux</code> · <span class="kbd">Ctrl+B</span> <span class="kbd">%</span></td><td>Split terminal</td></tr>
   <tr><td><code>vim file</code> · <code>:wq</code></td><td>Edit, save &amp; quit</td></tr>
 </table>
